@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Low-Latency Edge Voice Activator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#E8EDF1;--panel:#F8FAFB;--ink:#17223B;--mute:#5B6780;--line:#C9D2DC;--ok:#1F9D6B;--wake:#D9720F;--stream:#2A6FDB;--asr:#7A4BC7;--bad:#C93B3B;--st:var(--ok)}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.45 "IBM Plex Sans",system-ui,sans-serif;padding:16px;max-width:1280px;margin:0 auto}
+.mono{font-family:"IBM Plex Mono",Consolas,monospace}
+header{background:var(--ink);color:#fff;border-radius:8px;padding:14px 20px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+header h1{font-size:20px;font-weight:600}
+header p{color:#A9B6D3;font-size:13px}
+.conn{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.conn input{font:13px "IBM Plex Mono",monospace;padding:6px 8px;border-radius:5px;border:1px solid #44507A;background:#22305A;color:#fff;width:210px}
+button{font:500 13px "IBM Plex Sans",sans-serif;padding:6px 12px;border-radius:5px;border:1px solid #6A78A6;background:transparent;color:#fff;cursor:pointer}
+button:hover{background:#2C3B6B}button:focus-visible,input:focus-visible{outline:2px solid #8DB4FF;outline-offset:2px}
+button.mk{color:var(--ink);border-color:var(--line);background:#fff}button.mk:hover{background:#E8EDF1}
+button.on{background:#fff;color:var(--ink)}
+#banner{display:none;margin:10px 0 0;padding:8px 14px;border-radius:6px;background:#FFF1D6;border:1px solid #E5B55A;color:#6B4600;font-weight:500}
+.grid{display:grid;gap:12px;margin-top:12px;grid-template-columns:repeat(12,1fr)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
+.card h2{font-size:14px;font-weight:600;margin-bottom:10px}
+.c6{grid-column:span 6}.c4{grid-column:span 4}.c8{grid-column:span 8}.c12{grid-column:span 12}
+@media(max-width:820px){.c6,.c4,.c8{grid-column:span 12}}
+.row{display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-bottom:1px dashed var(--line)}
+.row:last-child{border:0}.row span:first-child{color:var(--mute)}
+.row b{font-family:"IBM Plex Mono",monospace;font-weight:500;text-align:right}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--line);margin-right:6px}
+.dot.g{background:var(--ok)}.dot.r{background:var(--bad)}
+#voice{background:var(--st);color:#fff;border-radius:8px;padding:22px 12px;text-align:center;transition:background .25s}
+#voice .big{font-size:34px;font-weight:600;letter-spacing:.01em}
+#voice .sub{opacity:.9;font-family:"IBM Plex Mono",monospace;margin-top:6px}
+#pipe{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.stage{flex:1;min-width:84px;text-align:center;border:1.5px solid var(--line);border-radius:8px;padding:10px 4px;background:#fff}
+.stage b{display:block;font-family:"IBM Plex Mono",monospace;font-size:15px}
+.stage small{color:var(--mute)}
+.stage.on{border-color:var(--ok);box-shadow:inset 0 -4px 0 var(--ok)}
+.stage.pend{border-color:var(--wake);box-shadow:inset 0 -4px 0 var(--wake)}
+.arrow{color:var(--mute)}
+.flow{margin-top:10px;font-family:"IBM Plex Mono",monospace;font-size:13px;color:var(--mute)}
+.hero{font-size:44px;font-weight:600;font-family:"IBM Plex Mono",monospace;line-height:1.1}
+.hero small{font-size:16px;color:var(--mute)}
+.bar{margin:8px 0 2px;display:flex;justify-content:space-between;font-size:13px}
+.track{height:12px;background:#DDE4EA;border-radius:6px;overflow:hidden}
+.fill{height:100%;width:0;background:var(--stream);transition:width .3s}
+canvas{width:100%;height:110px;display:block}
+table{width:100%;border-collapse:collapse;font-family:"IBM Plex Mono",monospace;font-size:13px}
+th,td{text-align:right;padding:5px 8px;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}th{color:var(--mute);font-weight:500}
+.metrics{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+@media(max-width:820px){.metrics{grid-template-columns:repeat(2,1fr)}}
+.m{background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.m small{color:var(--mute);display:block}.m b{font:500 22px "IBM Plex Mono",monospace}
+.cmd{font-size:22px;font-weight:500}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>Low-latency edge voice activator</h1><p>ESP32-S3 &middot; custom keyword spotting &middot; remote ASR</p></div>
+  <div class="conn">
+    <input id="url" value="ws://192.168.1.xx:81" title="Use the IP printed in the ESP32 Serial Monitor" aria-label="WebSocket URL">
+    <button id="bConn">Connect</button>
+    <button id="bDemo">stop</button>
+  </div>
+</header>
+<div id="banner">Demo mode: these numbers are simulated, not device measurements. Connect to the ESP32 or server for real data.</div>
+
+<div class="grid">
+  <section class="card c6"><h2>Device status</h2>
+    <div class="row"><span>Device</span><b id="dev">—</b></div>
+    <div class="row"><span>Wi-Fi</span><b id="wifi">—</b></div>
+    <div class="row"><span>ESP32 IP</span><b id="ip">—</b></div>
+    <div class="row"><span>Uptime</span><b id="up">—</b></div>
+    <div class="row"><span>Microphone</span><b id="mic">—</b></div>
+    <div class="row"><span>KWS</span><b id="kws">—</b></div>
+  </section>
+  <section class="card c6"><h2>Voice status</h2>
+    <div id="voice"><div class="big" id="vs">WAITING FOR DEVICE</div><div class="sub" id="vsub">Wake word: — &nbsp; Confidence: —</div></div>
+    <div class="metrics" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
+      <div class="m"><small>Detected</small><b id="det">—</b></div>
+      <div class="m"><small>False activations</small><b id="fa">—</b></div>
+      <div class="m"><small>Missed</small><b id="miss">—</b></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="mk" onclick="mark('mark_false')">Log false wake</button><button class="mk" onclick="mark('mark_missed')">Log missed wake</button></div>
+  </section>
+
+  <section class="card c12"><h2>Audio pipeline</h2>
+    <div id="pipe"></div>
+    <div class="flow" id="flow">Before wake: mic → KWS (local only, no audio leaves the device)</div>
+  </section>
+
+  <section class="card c6"><h2>Latency</h2>
+    <div class="hero"><span id="w2a">—</span> <small>ms wake → ASR</small></div>
+    <div style="margin-top:8px">
+      <div class="row"><span>Wake detection</span><b id="l_wake">—</b></div>
+      <div class="row"><span>&nbsp;&nbsp;↳ inference (part of detection)</span><b id="l_inf">—</b></div>
+      <div class="row"><span>Buffering</span><b id="l_buf">—</b></div>
+      <div class="row"><span>Network</span><b id="l_net">—</b></div>
+      <div class="row"><span>ASR start</span><b id="l_asr">—</b></div>
+    </div>
+  </section>
+  <section class="card c6"><h2>Edge resources</h2>
+    <div class="bar"><span>RAM</span><b class="mono" id="ramT">—</b></div><div class="track"><div class="fill" id="ramB"></div></div>
+    <div class="bar"><span>Flash</span><b class="mono" id="flT">—</b></div><div class="track"><div class="fill" id="flB"></div></div>
+    <div class="bar"><span>CPU</span><b class="mono" id="cpuT">—</b></div><div class="track"><div class="fill" id="cpuB"></div></div>
+    <div style="margin-top:10px">
+      <div class="row"><span>Model size</span><b id="msz">—</b></div>
+      <div class="row"><span>Tensor arena</span><b id="arena">—</b></div>
+    </div>
+  </section>
+
+  <section class="card c4"><h2>Model</h2>
+    <div class="row"><span>Model</span><b>Custom KWS</b></div>
+    <div class="row"><span>Architecture</span><b>DS-CNN</b></div>
+    <div class="row"><span>Precision</span><b>INT8</b></div>
+    <div class="row"><span>Input</span><b>16 kHz mono</b></div>
+    <div class="row"><span>Window</span><b>1 s</b></div>
+    <div class="row"><span>Classes</span><b>3</b></div>
+    <div class="row"><span>Size</span><b id="m_sz">—</b></div>
+    <div class="row"><span>Inference</span><b id="m_inf">—</b></div>
+    <div class="row"><span>Runtime</span><b>TFLite Micro</b></div>
+    <div class="row"><span>Pre-roll buffer</span><b id="m_pre">—</b></div>
+  </section>
+  <section class="card c4"><h2>Network</h2>
+    <div class="row"><span>Wi-Fi</span><b id="n_wifi">—</b></div>
+    <div class="row"><span>RSSI</span><b id="n_rssi">—</b></div>
+    <div class="row"><span>Protocol</span><b>WebSocket</b></div>
+    <div class="row"><span>Server</span><b id="n_srv">—</b></div>
+    <div class="row"><span>Audio</span><b>16 kHz PCM</b></div>
+    <div class="row"><span>Packet rate</span><b id="n_pps">—</b></div>
+    <div class="row"><span>Dropped</span><b id="n_drop">—</b></div>
+  </section>
+  <section class="card c4"><h2>Wake confidence (live)</h2>
+    <canvas id="cConf"></canvas>
+    <div class="mono" style="color:var(--mute);font-size:12px">Orange marks = wake detected</div>
+  </section>
+
+  <section class="card c12"><h2>Last command</h2>
+    <div class="cmd" id="cmd">Waiting for a command…</div>
+    <div class="mono" style="color:var(--mute);margin-top:4px" id="cmdm">ASR status: — &nbsp; Processing: —</div>
+  </section>
+
+  <section class="card c8"><h2>Performance history (last 10 activations)</h2>
+    <div style="overflow-x:auto"><table><thead><tr><th>Time</th><th>Confidence</th><th>Inference</th><th>Network</th><th>Wake→ASR</th></tr></thead><tbody id="hist"><tr><td colspan="5" style="text-align:center;color:var(--mute)">No activations yet</td></tr></tbody></table></div>
+  </section>
+  <section class="card c4"><h2>Wake → ASR trend (ms)</h2><canvas id="cLat"></canvas></section>
+
+  <section class="card c12"><h2>Edge performance</h2>
+    <div class="metrics">
+      <div class="m"><small>RAM</small><b id="p_ram">—</b></div>
+      <div class="m"><small>CPU</small><b id="p_cpu">—</b></div>
+      <div class="m"><small>Model</small><b id="p_mod">—</b></div>
+      <div class="m"><small>Inference</small><b id="p_inf">—</b></div>
+      <div class="m"><small>False wakes</small><b id="p_fw">—</b></div>
+      <div class="m"><small>Wake → ASR</small><b id="p_lat">—</b></div>
+    </div>
+  </section>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const S={conf:[],lat:[],hist:[],marks:[],det:null};
+const STAGES=[["MIC","16 kHz"],["DSP","MFCC"],["VAD","gate"],["KWS","DS-CNN"],["WAKE","trigger"],["PRE-ROLL","buffer"],["STREAM","WebSocket"],["ASR","remote"]];
+$("pipe").innerHTML=STAGES.map((s,i)=>(i?'<span class="arrow">→</span>':'')+`<div class="stage" id="st${i}"><b>${s[0]}</b><small>${s[1]}</small></div>`).join("");
+
+const INIT=document.querySelector(".grid").innerHTML;
+function resetUI(){document.querySelector(".grid").innerHTML=INIT;S.conf=[];S.lat=[];S.hist=[];S.marks=[];draw()}
+const T=(id,v)=>{$(id).textContent=v};
+const n=(v,u="",d=0)=>v==null?"—":Number(v).toFixed(d)+" "+u;
+const dot=(id,ok,yes,no)=>{$(id).innerHTML=`<span class="dot ${ok?'g':'r'}"></span>${ok?yes:no}`};
+const hms=s=>[s/3600|0,(s/60|0)%60,s%60|0].map(x=>String(x).padStart(2,"0")).join(":");
+
+const VOICE={LISTENING:["LISTENING","--ok"],WAKE:["WAKE WORD DETECTED","--wake"],STREAMING:["STREAMING AUDIO","--stream"],ASR:["ASR PROCESSING","--asr"],COMMAND:["COMMAND RECEIVED","--ok"]};
+const PIPE={LISTENING:[1,1,1,1,0,0,0,0],WAKE:[1,1,1,1,1,1,0,0],STREAMING:[1,1,1,1,1,1,1,0],ASR:[1,1,1,1,1,1,1,2],COMMAND:[1,1,1,1,1,1,1,1]};
+const FLOW={LISTENING:"Before wake: mic → KWS (local only, no audio leaves the device)",WAKE:"Wake word found: opening stream",STREAMING:"After wake: pre-roll + live audio → Wi-Fi → ASR server",ASR:"After wake: pre-roll + live audio → Wi-Fi → ASR server",COMMAND:"Command complete: returning to local listening"};
+
+function setState(st,kw,conf){
+  const v=VOICE[st];if(!v)return;
+  $("voice").style.setProperty("--st",`var(${v[1]})`);
+  T("vs",v[0]);
+  T("vsub",`Wake word: ${kw||"—"}   Confidence: ${conf==null?"—":conf.toFixed(1)+"%"}`);
+  PIPE[st].forEach((x,i)=>$("st"+i).className="stage"+(x==1?" on":x==2?" pend":""));
+  T("flow",FLOW[st]);
+}
+function bar(b,t,used,total,unit,pct){
+  const p=pct!=null?pct:(used!=null&&total?used/total*100:null);
+  $(b).style.width=(p==null?0:Math.min(100,p))+"%";
+  T(t,pct!=null?pct.toFixed(1)+" %":(used==null?"—":`${used} ${unit} / ${total} ${unit}  (${p.toFixed(0)}%)`));
+}
+function spark(c,arr,max,color,marks){
+  const dpr=devicePixelRatio||1,w=c.clientWidth,h=c.clientHeight;
+  c.width=w*dpr;c.height=h*dpr;const x=c.getContext("2d");x.scale(dpr,dpr);
+  x.strokeStyle="#C9D2DC";x.lineWidth=1;
+  for(let i=0;i<=4;i++){const y=4+(h-8)*i/4;x.beginPath();x.moveTo(0,y);x.lineTo(w,y);x.stroke()}
+  if(!arr.length)return;
+  const m=max||Math.max(...arr,1)*1.2,step=w/Math.max(arr.length-1,1);
+  x.strokeStyle=color;x.lineWidth=2;x.beginPath();
+  arr.forEach((v,i)=>{const px=i*step,py=h-4-(h-8)*Math.min(v/m,1);i?x.lineTo(px,py):x.moveTo(px,py)});x.stroke();
+  if(marks)marks.forEach((f,i)=>{if(f){x.fillStyle="#D9720F";x.beginPath();x.arc(i*step,h-4-(h-8)*Math.min(arr[i]/m,1),4,0,7);x.fill()}});
+}
+function draw(){spark($("cConf"),S.conf,1,"#2A6FDB",S.marks);spark($("cLat"),S.lat,0,"#7A4BC7")}
+
+let stChain=Promise.resolve();
+function queueState(m){stChain=stChain.then(()=>{setState(m.state,m.keyword,m.confidence);return new Promise(r=>setTimeout(r,450))})}
+function handle(m){
+  switch(m.type){
+  case"status":
+    dot("dev",m.device,"CONNECTED","DISCONNECTED");dot("wifi",m.wifi,"CONNECTED","DISCONNECTED");dot("n_wifi",m.wifi,"CONNECTED","DISCONNECTED");
+    T("ip",m.ip||"—");T("up",m.uptime_s==null?"—":hms(m.uptime_s));
+    dot("mic",m.mic,"ACTIVE","OFF");dot("kws",m.kws,"RUNNING","STOPPED");break;
+  case"state":queueState(m);break;
+  case"conf":
+    S.conf.push(m.value);S.marks.push(0);if(S.conf.length>120){S.conf.shift();S.marks.shift()}draw();break;
+  case"wake":{
+    if(S.marks.length)S.marks[S.marks.length-1]=1;
+    T("w2a",n(m.wake_to_asr_ms));T("l_wake",n(m.wake_ms,"ms"));T("l_inf",n(m.inference_ms,"ms"));
+    T("l_buf",n(m.buffer_ms,"ms"));T("l_net",n(m.network_ms,"ms"));T("l_asr",n(m.asr_start_ms,"ms"));
+    T("m_inf",n(m.inference_ms,"ms"));T("m_pre",n(m.preroll_ms,"ms"));T("p_inf",n(m.inference_ms,"ms"));T("p_lat",n(m.wake_to_asr_ms,"ms"));
+    S.hist.unshift({t:new Date().toLocaleTimeString("en-GB"),c:m.confidence,i:m.inference_ms,n:m.network_ms,l:m.wake_to_asr_ms});
+    S.hist=S.hist.slice(0,10);
+    $("hist").innerHTML=S.hist.map(r=>`<tr><td>${r.t}</td><td>${n(r.c,"%")}</td><td>${n(r.i,"ms")}</td><td>${n(r.n,"ms")}</td><td>${n(r.l,"ms")}</td></tr>`).join("");
+    if(m.wake_to_asr_ms!=null){S.lat.push(m.wake_to_asr_ms);if(S.lat.length>20)S.lat.shift()}draw();break}
+  case"resources":
+    bar("ramB","ramT",m.ram_used_kb,m.ram_total_kb,"KB");bar("flB","flT",m.flash_used_kb,m.flash_total_kb,"KB");
+    bar("cpuB","cpuT",null,null,"",m.cpu);
+    T("msz",n(m.model_kb,"KB"));T("m_sz",n(m.model_kb,"KB"));T("arena",n(m.arena_kb,"KB"));
+    T("p_ram",m.ram_used_kb==null?"—":m.ram_used_kb+" KB");T("p_cpu",n(m.cpu,"%",1));T("p_mod",n(m.model_kb,"KB"));break;
+  case"net":
+    T("n_rssi",n(m.rssi,"dBm"));dot("n_srv",m.server,"CONNECTED","DISCONNECTED");
+    if(m.pps>0)S.peak=m.pps;T("n_pps",n(m.pps,"/s")+(m.pps==0&&S.peak?"  (last stream: "+n(S.peak,"/s")+")":""));T("n_drop",n(m.dropped));break;
+  case"stats":
+    T("det",m.detected);T("fa",m.false);T("miss",m.missed);T("p_fw",n(m.false_per_hr,"/ hr",1));break;
+  case"asr":
+    T("cmd",m.text?`“${m.text}”`:"—");T("cmdm",`ASR status: ${m.ok===false?"failed":"complete"}   Processing: ${n(m.ms,"ms")}`);break;
+  }
+}
+
+function mark(c){if(ws&&ws.readyState==1)ws.send(JSON.stringify({cmd:c}))}
+let ws=null,demoT=null;
+function stopAll(){if(ws){ws.onclose=null;ws.close();ws=null}clearInterval(demoT);demoT=null;
+  $("banner").style.display="none";$("bDemo").classList.remove("on");$("bConn").classList.remove("on");$("bConn").textContent="Connect";resetUI()}
+$("bConn").onclick=()=>{
+  if(ws){stopAll();return}
+  stopAll();
+  try{ws=new WebSocket($("url").value)}catch(e){T("vs","BAD URL");T("vsub","Type the ESP32 IP, e.g. ws://192.168.1.42:81");return}
+  T("vs","CONNECTING…");
+  ws.onopen=()=>{$("bConn").textContent="Disconnect";$("bConn").classList.add("on");setState("LISTENING","HEY ISRO",null)};
+  ws.onmessage=e=>{try{handle(JSON.parse(e.data))}catch(_){}};
+  ws.onclose=()=>{ws=null;$("bConn").textContent="Connect";$("bConn").classList.remove("on");dot("dev",false,"","DISCONNECTED");T("vs","CONNECTION LOST");$("voice").style.setProperty("--st","var(--bad)")};
+};
+$("bDemo").onclick=()=>{ if(demoT){stopAll();return} stopAll();startDemo() };
+
+function startDemo(){
+  $("banner").style.display="block";$("bDemo").classList.add("on");
+  let t=0,det=0,phase=0,c=0.1;
+  const r=(a,b)=>a+Math.random()*(b-a);
+  handle({type:"resources",ram_used_kb:78,ram_total_kb:160,flash_used_kb:1250,flash_total_kb:2048,cpu:8.2,model_kb:42,arena_kb:28});
+  handle({type:"net",rssi:-52,pps:0,dropped:0,server:true});
+  handle({type:"stats",detected:0,false:0,missed:0,false_per_hr:0});
+  setState("LISTENING","HEY ISRO",null);
+  demoT=setInterval(()=>{
+    t+=0.2;
+    handle({type:"status",device:true,wifi:true,ip:"10.0.0.42",uptime_s:t,mic:true,kws:true});
+    if(phase==0){c=Math.max(.02,Math.min(.4,c+r(-.05,.05)));handle({type:"conf",value:c})}
+    handle({type:"resources",ram_used_kb:78,ram_total_kb:160,flash_used_kb:1250,flash_total_kb:2048,cpu:+r(6,11).toFixed(1),model_kb:42,arena_kb:28});
+    if(phase==0&&t%8<0.2){
+      phase=1;const cf=r(90,98),inf=Math.round(r(25,36)),wk=Math.round(r(70,95)),buf=Math.round(r(10,14)),net=Math.round(r(40,55)),asr=Math.round(r(65,78));
+      handle({type:"conf",value:cf/100});
+      handle({type:"wake",confidence:+cf.toFixed(1),inference_ms:inf,wake_ms:wk,buffer_ms:buf,network_ms:net,asr_start_ms:asr,wake_to_asr_ms:wk+buf+net+asr,preroll_ms:500});
+      handle({type:"stats",detected:++det,false:0,missed:0,false_per_hr:0});
+      setState("WAKE","HEY ISRO",cf);
+      setTimeout(()=>{setState("STREAMING","HEY ISRO",cf);handle({type:"net",rssi:-52,pps:50,dropped:0,server:true})},700);
+      setTimeout(()=>setState("ASR","HEY ISRO",cf),1800);
+      setTimeout(()=>{setState("COMMAND","HEY ISRO",cf);handle({type:"asr",text:"Turn on the laboratory light.",ms:420,ok:true});handle({type:"net",rssi:-52,pps:0,dropped:0,server:true})},2600);
+      setTimeout(()=>{setState("LISTENING","HEY ISRO",null);phase=0},4000);
+    }
+  },200);
+}
+addEventListener("resize",draw);draw();
+</script>
+</body>
+</html>
